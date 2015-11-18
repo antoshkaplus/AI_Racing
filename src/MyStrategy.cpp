@@ -8,10 +8,13 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <array>
 
-#include "ant/grid.hpp"
+#include "ant/grid/grid.hpp"
+#include "ant/grid/algorithms.hpp"
 #include "ant/geometry/d2.hpp"
-#include "ant/graph.hpp"
+#include "ant/graph/graph.hpp"
+
 
 using namespace model;
 using namespace std;
@@ -25,6 +28,7 @@ using namespace ant::geometry::d2::f;
 ofstream tiles("./../output/tiles.txt");
 ofstream stats("./../output/stats.txt");
 ofstream grid("./../output/grid.txt");
+ofstream ways("./../output/ways.txt");
 
 double prevSpeed = 0;
 bool inited = false;
@@ -41,15 +45,59 @@ Grid<TileType> gr;
 
 
 
+// UP, DOWN, RIGHT, LEFT
+constexpr array<array<bool, 4>, 12> neighbors = {{
+    {{false, false, false, false}}, //EMPTY
+    {{true, true, false, false}}, //VERTICAL
+    {{false,false,true,true}}, //HORIZONTAL
+    {{false,true,true,false}}, //LEFT_TOP_CORNER
+    {{false,true,false,true}}, //RIGHT_TOP_CORNER
+    {{true,false,true,false}}, //LEFT_BOTTOM_CORNER
+    {{true,false,false,true}}, //RIGHT_BOTTOM_CORNER
+    {{true,true,false,true}}, //RIGHT_HEADED_T
+    {{true,true,true,false}}, //LEFT_HEADED_T
+    {{true,false,true,true}}, //BOTTOM_HEADED_T 
+    {{false,true,true,true}}, //TOP_HEADED_T
+    {{true,true,true,true}} //CROSSROADS
+}};
+
+vector<Position> waypoints;
+
 
 void MyStrategy::move(const Car& self, const World& world, const Game& game, Move& move) {
     if (!inited) {
-        for (auto& w : world.getWaypoints()) {
-            tiles << "col: " << w[0] << " row: " << w[1] << endl;  
-        }
         inited = true;
+
+        gr = ToGrid(world.getTilesXY());
+        gr = gr.Transposed();
+        ::grid << gr; 
+        for (auto& w : world.getWaypoints()) {
+            tiles << "col: " << w[0] << " row: " << w[1] << endl;
+            waypoints.emplace_back(w[1], w[0]);  
+        }
+        auto is_neighbor = [&](const Position& p, grid::Direction d) {
+            return neighbors[static_cast<int>(gr[p])][d];
+        };
+        // shouldn't use grid at all here... or push values inside is_neighbor
+        // but there maybe some cool logic 
+        BFS<TileType, decltype(is_neighbor)> bfs;
+        bfs.Init(gr, is_neighbor);
         
         
+        bfs.FindShortestPaths({14,2}, {13,13});
+        
+        for (int i = 0; i < world.getWaypoints().size(); ++i) {
+            int i_next = (i+1) % world.getWaypoints().size();
+            auto res = bfs.FindShortestPaths(waypoints[i], waypoints[i_next]);
+            ways << waypoints[i] << "; " << waypoints[i_next] << endl;
+            for (auto r : res) {
+                for (auto p : r) {
+                    ways << p << "; ";
+                }
+                ways << endl;
+            }
+            ways << endl;
+        }
         
     }
     
